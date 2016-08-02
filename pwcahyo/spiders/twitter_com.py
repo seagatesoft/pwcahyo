@@ -8,6 +8,7 @@ from pwcahyo.items import TweetItemLoader
 class TwitterComSpider(Spider):
     name = 'twitter'
     allowed_domains = ['twitter.com']
+    start_urls = ['https://twitter.com/search-home']
     initial_search_url_tmpl = (
         'https://twitter.com/search?f=tweets&vertical=default&q={keywords}&src=typd'
     )
@@ -17,32 +18,33 @@ class TwitterComSpider(Spider):
         '&reset_error_state=false'
     )
     time_initial_search_url_tmpl = (
-        'https://twitter.com/search?f=tweets&vertical=default&q={keywords}'
-        '&since={since}&until={until}src=typd'
+        'https://twitter.com/search?f=tweets&vertical=default&q="{keywords}"'
+        '%20since%3A{since}%20until%3A{until}&src=typd'
     )
     time_next_page_url_tmpl = (
-        'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q={keywords}&src=typd'
+        'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q="{keywords}"'
+        '%20since%3A{since}%20until%3A{until}&src=typd'
         '&include_available_features=1&include_entities=1&max_position={max_position}'
-        '&reset_error_state=false&since={since}&until={until}src=typd'
+        '&reset_error_state=false'
     )
 
-    def start_requests(self):
+    def parse(self, response):
         if getattr(self, 'since', False) and getattr(self, 'until', False):
             yield Request(
-                self.initial_search_url_tmpl.format(
+                self.time_initial_search_url_tmpl.format(
                     keywords=self.keywords,
                     since=self.since,
                     until=self.until,
                 ),
-                callback=self.parse,
+                callback=self.parse_first_page,
             )
         else:
             yield Request(
                 self.initial_search_url_tmpl.format(keywords=self.keywords),
-                callback=self.parse,
+                callback=self.parse_first_page,
             )
 
-    def parse(self, response):
+    def parse_first_page(self, response):
         index = response.meta.get('index', 0)
         max_position = response.css(
             "div.stream-container::attr(data-min-position)"
@@ -83,6 +85,7 @@ class TwitterComSpider(Spider):
             til.add_css('fullname', "div.stream-item-header > a > strong::text")
             til.add_css('text_tweet', "p.TweetTextSize")
             til.add_css('hash_tags', "p.TweetTextSize > a.twitter-hashtag > b::text")
+            til.add_css('time_tweet', "div.stream-item-header > small.time > a::attr(title)")
             til.add_css('lang', "p.TweetTextSize::attr(lang)")
             til.add_css(
                 'retweets',
@@ -107,7 +110,7 @@ class TwitterComSpider(Spider):
 
     def create_next_page_request(self, max_position, index):
         if getattr(self, 'since', False) and getattr(self, 'until', False):
-            next_page_url = self.next_page_url_tmpl.format(
+            next_page_url = self.time_next_page_url_tmpl.format(
                 keywords=self.keywords,
                 max_position=max_position,
                 since=self.since,
